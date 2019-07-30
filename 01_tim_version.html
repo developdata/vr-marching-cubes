@@ -1,0 +1,440 @@
+<!-- https://github.com/timoxley/threejs/blob/master/examples/webgl_marching_cubes.html -->
+
+<!-- good resource for other marching cubes code https://stemkoski.github.io/Three.js/ -->
+<!DOCTYPE HTML>
+<html lang="en">
+<head>
+	<title>three.js webgl - marching cubes</title>
+	<meta charset="utf-8">
+	<style>
+		body {
+		  color: #fff;
+		  font-family: Monospace;
+		  font-size: 13px;
+		  text-align: center;
+
+		  background-color: #000;
+		  margin: 0px;
+		  overflow: hidden;
+		}
+
+		#info {
+		  color: #ffffff;
+		  position: absolute;
+		  top: 0px;
+		  width: 100%;
+		  padding: 5px;
+		}
+
+		a {
+		  color: gold;
+		}
+
+		#oldie {
+		  font-family: monospace;
+		  font-size: 13px;
+
+		  text-align: center;
+		  background: rgb(0, 0, 50);
+		  color: #fff;
+		  padding: 1em;
+
+		  width: 475px;
+		  margin: 5em auto 0;
+
+		  display: none;
+		}
+
+	</style>
+</head>
+
+<body>
+
+	<div id="container"></div>
+
+
+	<script src="three.min.js"></script>
+
+	<script src="CopyShader.js"></script>
+	<script src="FXAAShader.js"></script>
+	<script src="HorizontalTiltShiftShader.js"></script>
+	<script src="VerticalTiltShiftShader.js"></script>
+
+	<script src="EffectComposer.js"></script>
+	<script src="RenderPass.js"></script>
+	<!-- <script src="js/BloomPass.js"></script> -->
+	<script src="ShaderPass.js"></script>
+	<!-- <script src="js/MaskPass.js"></script> -->
+	<!-- <script src="js/SavePass.js"></script> -->
+
+	<script src="MarchingCubes.js"></script>
+	<script src="ShaderToon.js"></script>
+
+
+
+	<script>
+
+		var MARGIN = 0;
+
+		var SCREEN_WIDTH = window.innerWidth;
+		var SCREEN_HEIGHT = window.innerHeight - 2 * MARGIN;
+
+		var container, stats;
+
+		var camera, scene, renderer;
+
+		var mesh, texture, geometry, materials, material, current_material;
+
+		var light, pointLight, ambientLight;
+
+		var effect, resolution, numBlobs;
+
+		var composer, effectFXAA, hblur, vblur;
+
+		var effectController;
+
+		var time = 0;
+		var clock = new THREE.Clock();
+
+		var floor = true;
+
+		var wallx = false;
+		var wallz = false;
+
+		init();
+		animate();
+
+		function init() {
+
+			container = document.getElementById( 'container' );
+
+			// CAMERA
+
+			camera = new THREE.PerspectiveCamera( 45, SCREEN_WIDTH / SCREEN_HEIGHT, 1, 10000 );
+			camera.position.set( -500, 500, 1500 );
+
+
+			// SCENE
+
+			scene = new THREE.Scene();
+
+			// LIGHTS
+
+			light = new THREE.DirectionalLight( 0xffffff );
+			light.position.set( 0.5, 0.5, 1 );
+			scene.add( light );
+
+			pointLight = new THREE.PointLight( 0xff3300 );
+			pointLight.position.set( 0, 0, 100 );
+			scene.add( pointLight );
+
+			ambientLight = new THREE.AmbientLight( 0x080808 );
+			scene.add( ambientLight );
+
+			// MATERIALS
+
+			// "chrome", "liquid", "shiny", "matte", "flat", "textured", "colors", 
+			// "plastic", "toon1", "toon2", "hatching", "hatching2", "dotted", "dotted2"
+
+			materials = generateMaterials();
+			current_material = "dotted2";
+
+			// MARCHING CUBES
+
+			resolution = 28;
+			numBlobs = 10;
+
+			effect = new THREE.MarchingCubes( resolution, materials[ current_material ].m, true, true );
+			effect.position.set( 0, 0, 0 );
+			effect.scale.set( 700, 700, 700 );
+
+			effect.enableUvs = false;
+			effect.enableColors = false;
+
+			scene.add( effect );
+
+			// RENDERER
+
+			renderer = new THREE.WebGLRenderer( { clearColor: 0x050505, clearAlpha: 1, alpha: false } );
+			renderer.setSize( SCREEN_WIDTH, SCREEN_HEIGHT );
+
+			renderer.domElement.style.position = "absolute";
+			renderer.domElement.style.top = MARGIN + "px";
+			renderer.domElement.style.left = "0px";
+
+			container.appendChild( renderer.domElement );
+			//
+
+			renderer.gammaInput = true;
+			renderer.gammaOutput = true;
+			renderer.physicallyBasedShading = true;
+
+
+			// COMPOSER
+
+			renderer.autoClear = false;
+
+			renderTargetParameters = { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, format: THREE.RGBFormat, stencilBuffer: false };
+			renderTarget = new THREE.WebGLRenderTarget( SCREEN_WIDTH, SCREEN_HEIGHT, renderTargetParameters );
+
+			effectFXAA = new THREE.ShaderPass( THREE.FXAAShader );
+
+			hblur = new THREE.ShaderPass( THREE.HorizontalTiltShiftShader );
+			vblur = new THREE.ShaderPass( THREE.VerticalTiltShiftShader );
+
+			var bluriness = 8;
+
+			hblur.uniforms[ 'h' ].value = bluriness / SCREEN_WIDTH;
+			vblur.uniforms[ 'v' ].value = bluriness / SCREEN_HEIGHT;
+
+			hblur.uniforms[ 'r' ].value = vblur.uniforms[ 'r' ].value = 0.5;
+
+			effectFXAA.uniforms[ 'resolution' ].value.set( 1 / SCREEN_WIDTH, 1 / SCREEN_HEIGHT );
+
+			composer = new THREE.EffectComposer( renderer, renderTarget );
+
+			var renderModel = new THREE.RenderPass( scene, camera );
+
+			vblur.renderToScreen = true;
+			//effectFXAA.renderToScreen = true;
+
+			composer = new THREE.EffectComposer( renderer, renderTarget );
+
+			composer.addPass( renderModel );
+
+			composer.addPass( effectFXAA );
+
+			composer.addPass( hblur );
+			composer.addPass( vblur );
+
+
+			// EVENTS
+
+			window.addEventListener( 'resize', onWindowResize, false );
+
+		}
+
+		//
+
+		function onWindowResize( event ) {
+
+			SCREEN_WIDTH = window.innerWidth;
+			SCREEN_HEIGHT = window.innerHeight - 2 * MARGIN;
+
+			renderer.setSize( SCREEN_WIDTH, SCREEN_HEIGHT );
+
+			camera.aspect = SCREEN_WIDTH / SCREEN_HEIGHT;
+			camera.updateProjectionMatrix();
+
+			renderTarget = new THREE.WebGLRenderTarget( SCREEN_WIDTH, SCREEN_HEIGHT, renderTargetParameters );
+
+			composer.reset( renderTarget );
+
+			hblur.uniforms[ 'h' ].value = 4 / SCREEN_WIDTH;
+			vblur.uniforms[ 'v' ].value = 4 / SCREEN_HEIGHT;
+
+			effectFXAA.uniforms[ 'resolution' ].value.set( 1 / SCREEN_WIDTH, 1 / SCREEN_HEIGHT );
+
+		}
+
+		function generateMaterials() {
+
+			// environment map
+
+			var path = "textures/cube/SwedishRoyalCastle/";
+			var format = '.jpg';
+			var urls = [
+				path + 'px' + format, path + 'nx' + format,
+				path + 'py' + format, path + 'ny' + format,
+				path + 'pz' + format, path + 'nz' + format
+			];
+
+			var reflectionCube = THREE.ImageUtils.loadTextureCube( urls );
+			reflectionCube.format = THREE.RGBFormat;
+
+			var refractionCube = new THREE.Texture( reflectionCube.image, new THREE.CubeRefractionMapping() );
+			reflectionCube.format = THREE.RGBFormat;
+
+			// toons
+
+			var toonMaterial1 = createShaderMaterial( "toon1", light, ambientLight ),
+			toonMaterial2 = createShaderMaterial( "toon2", light, ambientLight ),
+			hatchingMaterial = createShaderMaterial( "hatching", light, ambientLight ),
+			hatchingMaterial2 = createShaderMaterial( "hatching", light, ambientLight ),
+			dottedMaterial = createShaderMaterial( "dotted", light, ambientLight ),
+			dottedMaterial2 = createShaderMaterial( "dotted", light, ambientLight );
+
+			hatchingMaterial2.uniforms.uBaseColor.value.setRGB( 0, 0, 0 );
+			hatchingMaterial2.uniforms.uLineColor1.value.setHSV( 0, 0.9, 0.9 );
+			hatchingMaterial2.uniforms.uLineColor2.value.setHSV( 0, 0.9, 0.9 );
+			hatchingMaterial2.uniforms.uLineColor3.value.setHSV( 0, 0.9, 0.9 );
+			hatchingMaterial2.uniforms.uLineColor4.value.setHSV( 0.1, 0.9, 0.9 );
+
+			dottedMaterial2.uniforms.uBaseColor.value.setRGB( 0, 0, 0 );
+			dottedMaterial2.uniforms.uLineColor1.value.setHSV( 0.05, 1.0, 1.0 );
+
+			var texture = THREE.ImageUtils.loadTexture( "textures/ash_uvgrid01.jpg" );
+			texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+
+			var materials = {
+
+			"chrome" :
+			{
+				m: new THREE.MeshLambertMaterial( { color: 0xffffff, envMap: reflectionCube } ),
+				h: 0, s: 0, v: 1
+			},
+
+			"liquid" :
+			{
+				m: new THREE.MeshLambertMaterial( { color: 0xffffff, envMap: refractionCube, refractionRatio: 0.85 } ),
+				h: 0, s: 0, v: 1
+			},
+
+			"shiny"  :
+			{
+				m: new THREE.MeshPhongMaterial( { color: 0x550000, specular: 0x440000, envMap: reflectionCube, combine: THREE.MixOperation, reflectivity: 0.3, perPixel: true, metal: true } ),
+				h: 0, s: 0.9, v: 0.3
+			},
+
+			"matte" :
+			{
+				m: new THREE.MeshPhongMaterial( { color: 0x000000, specular: 0x111111, shininess: 1, perPixel: true } ),
+				h: 0, s: 0, v: 1
+			},
+
+			"flat" :
+			{
+				m: new THREE.MeshPhongMaterial( { color: 0x000000, specular: 0x111111, shininess: 1, shading: THREE.FlatShading, perPixel: true } ),
+				h: 0, s: 0, v: 1
+			},
+
+			"textured" :
+			{
+				m: new THREE.MeshPhongMaterial( { color: 0xffffff, specular: 0x111111, shininess: 1, map: texture, perPixel: true } ),
+				h: 0, s: 0, v: 1
+			},
+
+			"colors" :
+			{
+				m: new THREE.MeshPhongMaterial( { color: 0xffffff, specular: 0xffffff, shininess: 2, vertexColors: THREE.VertexColors, perPixel: true } ),
+				h: 0, s: 0, v: 1
+			},
+
+			"plastic" :
+			{
+				m: new THREE.MeshPhongMaterial( { color: 0x000000, specular: 0x888888, ambient: 0x000000, shininess: 250, perPixel: true } ),
+				h: 0.6, s: 0.9, v: 0.2
+			},
+
+			"toon1"  :
+			{
+				m: toonMaterial1,
+				h: 0.2, s: 0.5, v: 1
+			},
+
+			"toon2" :
+			{
+				m: toonMaterial2,
+				h: 0.4, s: 0.5, v: 1
+			},
+
+			"hatching" :
+			{
+				m: hatchingMaterial,
+				h: 0.2, s: 0.2, v: 1
+			},
+
+			"hatching2" :
+			{
+				m: hatchingMaterial2,
+				h: 0.0, s: 0.9, v: 0.9
+			},
+
+			"dotted" :
+			{
+				m: dottedMaterial,
+				h: 0.2, s: 0.2, v: 1
+			},
+
+			"dotted2" :
+			{
+				m: dottedMaterial2,
+				h: 0.1, s: 1.0, v: 1
+			}
+
+			};
+
+			return materials;
+
+		}
+
+		function createShaderMaterial( id, light, ambientLight ) {
+
+			var shader = THREE.ShaderToon[ id ];
+
+			var u = THREE.UniformsUtils.clone( shader.uniforms );
+
+			var vs = shader.vertexShader;
+			var fs = shader.fragmentShader;
+
+			var material = new THREE.ShaderMaterial( { uniforms: u, vertexShader: vs, fragmentShader: fs } );
+
+			material.uniforms.uDirLightPos.value = light.position;
+			material.uniforms.uDirLightColor.value = light.color;
+
+			material.uniforms.uAmbientLightColor.value = ambientLight.color;
+
+			return material;
+
+		}
+
+		// this controls content of marching cubes voxel field
+
+		function updateCubes( object, time, numblobs, floor, wallx, wallz ) {
+
+			object.reset();
+
+			// fill the field with some metaballs
+
+			var i, ballx, bally, ballz, subtract, strength;
+
+			subtract = 12;
+			strength = 1.2 / ( ( Math.sqrt( numblobs ) - 1 ) / 4 + 1 );
+
+			for ( i = 0; i < numblobs; i ++ ) {
+
+				ballx = Math.sin( i + 1.26 * time * ( 1.03 + 0.5 * Math.cos( 0.21 * i ) ) ) * 0.27 + 0.5;
+				bally = Math.abs( Math.cos( i + 1.12 * time * Math.cos( 1.22 + 0.1424 * i ) ) ) * 0.77; // dip into the floor
+				ballz = Math.cos( i + 1.32 * time * 0.1 * Math.sin( ( 0.92 + 0.53 * i ) ) ) * 0.27 + 0.5;
+
+				object.addBall(ballx, bally, ballz, strength, subtract);
+
+			}
+
+			if ( floor ) object.addPlaneY( 2, 12 );
+			if ( wallz ) object.addPlaneZ( 2, 12 );
+			if ( wallx ) object.addPlaneX( 2, 12 );
+
+		}
+
+		function animate() {
+			requestAnimationFrame( animate );
+			render();
+		}
+
+		function render() {
+			var delta = clock.getDelta();
+
+			time += delta * 0.1 * 0.5;
+
+			updateCubes( effect, time, numBlobs, floor, wallx, wallz );
+
+				renderer.clear();
+				renderer.render( scene, camera );
+
+		}
+
+</script>
+
+</body>
+</html>
