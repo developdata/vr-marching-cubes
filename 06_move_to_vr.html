@@ -1,0 +1,108 @@
+<!-- https://github.com/stemkoski/stemkoski.github.com/blob/master/Three.js/Metabubbles.html -->
+<!doctype html>
+<html lang="en">
+<head>
+	<title>Metaballs + Bubbles (Three.js)</title>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+<!-- 	<link rel=stylesheet href="css2/base.css"/> -->
+</head>
+<body>
+
+<script src="three.min.2019.js"></script>
+<script src="MarchCube.js"></script>
+<script src="MeshForm-1.js"></script>
+
+<!-- Contains Lookup Tables for the Marching Cubes Algorithm -->
+<script src="MarchingCubesData.js"></script>
+
+
+<div id="ThreeJS" style="position: absolute; left:0px; top:0px"></div>
+<script>
+
+var container;
+var scene;
+var camera;
+var renderer;
+var clock = new THREE.Clock();
+
+init();
+
+
+var meshForm = new THREE.MeshForm();
+var ballData = meshForm.initialMesh();
+
+animate();
+
+// FUNCTIONS 		
+function init() {
+	// SCENE
+	scene = new THREE.Scene();
+	// CAMERA
+	var SCREEN_WIDTH = window.innerWidth, SCREEN_HEIGHT = window.innerHeight;
+	var VIEW_ANGLE = 45, ASPECT = SCREEN_WIDTH / SCREEN_HEIGHT, NEAR = 0.1, FAR = 20000;
+	camera = new THREE.PerspectiveCamera( VIEW_ANGLE, ASPECT, NEAR, FAR);
+	scene.add(camera);
+	camera.position.set(2,1,14);
+	camera.lookAt(scene.position);	
+	// RENDERER
+
+	renderer = new THREE.WebGLRenderer( {antialias:true} );
+
+	renderer.setSize(SCREEN_WIDTH, SCREEN_HEIGHT);
+	container = document.getElementById( 'ThreeJS' );
+	container.appendChild( renderer.domElement );
+
+
+	// LIGHT
+	var light = new THREE.PointLight(0xff0000);
+	light.position.set(10,0,0);
+	scene.add(light);
+	var light = new THREE.PointLight(0x00cc00);
+	light.position.set(0,10,0);
+	scene.add(light);
+	var light = new THREE.PointLight(0x0000ff);
+	light.position.set(0,0,10);
+	scene.add(light);
+	var light = new THREE.PointLight(0x333333);
+	light.position.set(-10,-10,-10);
+	scene.add(light);
+}
+  
+
+
+function animate(){
+  requestAnimationFrame( animate );
+	render();		
+	update();
+}
+
+function update(){		
+	var t = clock.getElapsedTime();
+	meshForm.ballUpdate(0.3 * t, ballData.points, ballData.values);
+}
+
+function render(){
+	renderer.render( scene, camera );
+}
+
+// METABALLS FUNCTIONS
+
+function resetValues( values ){
+    for (var i = 0; i < values.length; i++)
+		values[i] = 0;
+}
+
+// add values corresponding to a ball with radius 1 to values array
+function addBall(points, values, center){
+	for (var i = 0; i < values.length; i++)
+	{
+		var OneMinusD2 = 1.0 - center.distanceToSquared( points[i] );
+		values[i] += Math.exp( -(OneMinusD2 * OneMinusD2) );
+	}
+}
+
+</script>
+
+</body>
+</html>
